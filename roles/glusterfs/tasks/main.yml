@@ -1,0 +1,34 @@
+---
+# tasks file for glusterfs
+
+- name: oc login
+  shell: oc login -u system:admin
+
+- name: swtich project
+  shell: oc project gluster-app-storage
+
+- name: Execute script to properly get the new bricks ready for the gluster
+  shell: install-cluster-dat.sh {{ environment }}
+
+- name: Get Heketi pod
+  shell: kubectl -n {{ namespace }} get pods | grep heketi | awk '{print $1}'
+  register: heketi_pod
+
+- name: Get Cluster information
+  shell: kubectl -n {{ namespace }} exec {{ heketi_pod }} -- heketi-cli --user {{ username }} --secret {{ password }} cluster list | grep -oP "^Id:\s\K([A-Za-z0-9]*)"
+  register: cluster_id
+
+- name: Add node to cluster
+  shell: kubectl -n {{ namespace }} exec {{ heket_pod }} -- heketi-cli --user {{ username }} --secret {{ password }} node add --zone={{zone}} --cluster={{ cluster_idv}} --management-host-name={{ inventory_hostname }} --storage-host-name={{ glusterfs_ip }}
+  register: output
+ 
+- set_fact:
+  node_id: output.json | default({})) | json_query('Id')
+
+- name: Add device to node
+  shell: kubectl -n {{ namespace }} exec {{ heketi_pod }} -- heketi-cli --user {{ username }} --secret {{ password }} device add --name={{item}} --node={{ node_id }}
+  with_items: glusterfs_devices
+
+- name: Enable node
+  shell: kubectl -n {{ namespace }} exec {{ heketi_pod }} -- heketi-cli --user {{ username }} --secret {{ password }} enable {{ node_id }}
+  with_items: glusterfs_devices
