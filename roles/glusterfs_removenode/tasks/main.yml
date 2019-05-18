@@ -1,0 +1,37 @@
+---
+# tasks file for glusterfs
+
+- name: oc login
+  shell: oc login -u system:admin
+
+- name: swtich project
+  shell: oc project gluster-app-storage
+
+- name: Get Heketi pod
+  shell: kubectl -n {{ namespace }} get pods | grep heketi | awk '{print $1}'
+  register: heketi_pod
+
+- name: Get Cluster information
+  shell: kubectl -n {{ namespace }} exec {{ heketi_pod.stdout }} -- heketi-cli  cluster list | grep -oP "^Id:\s\K([A-Za-z0-9]*)"
+  register: cluster_id
+
+- name: Get Topology info and search by node management hostname
+  shell: kubectl -n {{ namespace }} exec {{ heket_pod.stdout }} -- heketi-cli topology info --json=true | jq '.clusters[0].nodes[] | select(.hostnames.manage[0]=="{{node}}").id' 
+  register: node_id
+
+- name: Get node info and search device id
+  shell: kubectl -n {{ namespace }} exec {{ heket_pod.stdout }} -- heketi-cli ndoe info {{ node_id.stdout }} --json=true | jq '.devices[] | .id'"
+  register: device
+
+- name: node cleanup
+  shell: kubectl -n {{ namespace }} exec {{ heketi_pod.stdout }} -- heketi-cli node {{item}} {{ node_id.stdout }}
+  with_items:
+    - "disable"
+    - "remove"
+
+- name: Delete device
+  shell: kubectl -n {{ namespace }} exec {{ heketi_pod.stdout }} -- heketi-cli device delete {{item}}
+  with_items: device.stdout_lines
+
+- name: Delete node
+  shell: kubectl -n {{ namespace }} exec {{ heketi_pod.stdout }} -- heketi-cli node delete {{ node_id.stdout }}
